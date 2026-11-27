@@ -82,6 +82,31 @@
       color: var(--text);
       font: 600 13px ui-monospace, Menlo, monospace;
     }
+    #main { flex: 1; min-height: 0; display: flex; gap: 8px; margin: 0 8px 8px; }
+    #main #term-wrap { margin: 0; flex: 1; min-width: 0; }
+    #samples {
+      width: 320px; flex: none; overflow-y: auto;
+      background: var(--panel); border-radius: 10px; padding: 12px;
+    }
+    #samples h2 { font-size: 15px; margin: 0 0 4px; }
+    #samples > p { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
+    .sample { border-top: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); padding: 10px 0; }
+    .sample code {
+      display: block; font: 12.5px/1.4 ui-monospace, Menlo, Consolas, monospace;
+      background: color-mix(in srgb, var(--bg) 70%, transparent); color: var(--accent);
+      padding: 6px 8px; border-radius: 6px; word-break: break-all;
+    }
+    .sample p { margin: 6px 0; font-size: 13px; color: var(--muted); }
+    .sample button {
+      border: 0; border-radius: 6px; padding: 5px 10px; cursor: pointer;
+      background: var(--accent-2); color: #fff; font: 600 12px -apple-system, sans-serif;
+    }
+    .sample button:disabled { opacity: .45; cursor: default; }
+    @media (max-width: 760px) {
+      #main { flex-direction: column; }
+      #main #term-wrap { min-height: 55vh; }
+      #samples { width: auto; max-height: 40vh; }
+    }
   </style>
 </head>
 <body>
@@ -105,7 +130,14 @@
     <div class="hint" id="hint">İlk açılışta yaklaşık 50 MB indirilir. Sistem açıldıktan sonra komutlar birkaç saniyede yanıt verir.</div>
   </div>
 
-  <div id="term-wrap"><div id="terminal"></div></div>
+  <div id="main">
+    <div id="term-wrap"><div id="terminal"></div></div>
+    <aside id="samples">
+      <h2>Hazır örnekler</h2>
+      <p>"Çalıştır" komutu terminale yazar ve Enter'a basar. Sistem açıldıktan sonra kullanın.</p>
+      <div id="sample-list"></div>
+    </aside>
+  </div>
   <div id="keys">
     <button data-k="tab">Tab</button>
     <button data-k="ctrlc">Ctrl+C</button>
@@ -129,6 +161,34 @@
       setMsg(text, null);
       $("hint").textContent = "Sayfayı yenileyip tekrar deneyin. Sorun sürerse güncel bir Safari, Chrome ya da Firefox kullanın.";
     };
+
+    const SAMPLES = [
+      ["nix --version", "Kurulu Nix sürümünü gösterir."],
+      ["nix eval --expr '1 + 2'", "Nix dilinde basit bir hesap yapar. Nix aslında bir programlama dilidir."],
+      ["nix eval --expr 'builtins.map (x: x * x) [ 1 2 3 ]'", "Listedeki her sayının karesini alır (fonksiyon + liste örneği)."],
+      ["nix eval --expr '{ ad = \"Nix\"; yil = 2003; }.ad'", "Bir kayıt (attribute set) oluşturup içinden alan okur."],
+      ["nix eval --impure --expr 'builtins.currentSystem'", "Nix'in hangi işlemci/sistem için çalıştığını söyler."],
+      ["cat demo.nix", "Örnek paket tarifini (derivation) gösterir."],
+      ["nix-build demo.nix && cat result", "Tarifi derler: sonuç /nix/store içine yazılır, 'result' ona kısayoldur."],
+      ["ls /nix/store", "Nix'in tüm paketleri tuttuğu mağazayı listeler. Her paketin adında benzersiz bir hash var."],
+      ["nix path-info --all", "Nix veritabanında kayıtlı tüm paketleri listeler."],
+      ["nix path-info -rsh $(readlink -f $(which hello))", "hello paketinin ve bağımlılıklarının boyutunu gösterir."],
+      ["hello", "GNU hello programı: Nix ile kurulmuş basit bir paket."],
+      ["figlet NixOS", "Yazıyı büyük harflerle çizer (figlet paketi)."],
+      ["uname -a", "Tarayıcıda çalışan Linux çekirdeğinin bilgisini gösterir."],
+    ];
+    let sendToTerm = null;
+    const list = $("sample-list");
+    for (const [cmd, desc] of SAMPLES) {
+      const el = document.createElement("div");
+      el.className = "sample";
+      const code = document.createElement("code"); code.textContent = cmd;
+      const p = document.createElement("p"); p.textContent = desc;
+      const b = document.createElement("button"); b.textContent = "Çalıştır"; b.disabled = true;
+      b.addEventListener("click", () => sendToTerm && sendToTerm(cmd + "\r"));
+      el.append(code, p, b);
+      list.append(el);
+    }
 
     async function downloadImage() {
       const manifest = await (await fetch("./image/manifest.json", { cache: "no-cache" })).json();
@@ -179,6 +239,8 @@
       worker.postMessage({ type: "init", imagename: imageUrl });
       new TtyServer(slave).start(worker);
 
+      sendToTerm = (text) => { master.ldisc.writeFromLower(Array.from(new TextEncoder().encode(text))); xterm.focus(); };
+      document.querySelectorAll(".sample button").forEach((b) => (b.disabled = false));
       const keys = { tab: "\t", ctrlc: "\x03", up: "\x1b[A", down: "\x1b[B", clear: "clear\r" };
       document.querySelectorAll("#keys button").forEach((b) =>
         b.addEventListener("click", () => { master.ldisc.writeFromLower(Array.from(new TextEncoder().encode(keys[b.dataset.k]))); xterm.focus(); }));
