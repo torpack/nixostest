@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Nix Tarayıcıda</title>
+  <script src="./coi-serviceworker.min.js"></script>
+  <link rel="stylesheet" href="./vendor/xterm.css">
+  <style>
+    :root {
+      --bg: #0f1420;
+      --panel: #171e2e;
+      --text: #e6e9ef;
+      --muted: #9aa3b5;
+      --accent: #7ebae4;
+      --accent-2: #5277c3;
+      --warn: #f0c674;
+    }
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --bg: #f4f6fa;
+        --panel: #ffffff;
+        --text: #1b2333;
+        --muted: #5b6577;
+        --accent: #3a6fc4;
+        --accent-2: #5277c3;
+        --warn: #9a6700;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #0f1420; --panel: #171e2e; --text: #e6e9ef; --muted: #9aa3b5;
+      --accent: #7ebae4; --accent-2: #5277c3; --warn: #f0c674;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+    }
+    header svg { flex: none; }
+    header h1 { font-size: 17px; margin: 0; font-weight: 650; }
+    header p { margin: 0; color: var(--muted); font-size: 13px; }
+    #status {
+      margin: 0 16px 12px;
+      padding: 14px 16px;
+      background: var(--panel);
+      border-radius: 12px;
+    }
+    #status .label { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+    #status .hint { color: var(--muted); font-size: 13px; margin-top: 8px; }
+    .bar { height: 6px; background: color-mix(in srgb, var(--muted) 25%, transparent); border-radius: 3px; margin-top: 10px; overflow: hidden; }
+    .bar > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent-2), var(--accent)); transition: width .2s; }
+    #status.error { color: var(--warn); }
+    #term-wrap {
+      flex: 1;
+      min-height: 0;
+      margin: 0 8px 8px;
+      background: #000;
+      border-radius: 10px;
+      padding: 6px;
+      display: none;
+    }
+    #terminal { width: 100%; height: 100%; }
+    #keys { display: none; gap: 6px; padding: 0 8px 8px; flex-wrap: wrap; }
+    #keys button {
+      flex: 1 1 auto;
+      min-width: 52px;
+      padding: 9px 6px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+      font: 600 13px ui-monospace, Menlo, monospace;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <svg width="30" height="30" viewBox="0 0 100 100" aria-hidden="true">
+      <g fill="none" stroke-width="11" stroke-linecap="round">
+        <path d="M30 18 L62 74" stroke="#7ebae4"/>
+        <path d="M70 18 L38 74" stroke="#5277c3"/>
+        <path d="M16 50 L84 50" stroke="#7ebae4"/>
+      </g>
+    </svg>
+    <div>
+      <h1>Nix tarayıcıda</h1>
+      <p>WebAssembly üzerinde çalışan bir Linux, içinde Nix paket yöneticisiyle</p>
+    </div>
+  </header>
+
+  <div id="status">
+    <div class="label"><span id="msg">Hazırlanıyor…</span><span id="pct"></span></div>
+    <div class="bar"><div id="fill"></div></div>
+    <div class="hint" id="hint">İlk açılışta yaklaşık 50 MB indirilir. Sistem açıldıktan sonra komutlar birkaç saniyede yanıt verir.</div>
+  </div>
+
+  <div id="term-wrap"><div id="terminal"></div></div>
+  <div id="keys">
+    <button data-k="tab">Tab</button>
+    <button data-k="ctrlc">Ctrl+C</button>
+    <button data-k="up">↑</button>
+    <button data-k="down">↓</button>
+    <button data-k="clear">clear</button>
+  </div>
+
+  <script src="./vendor/xterm.js"></script>
+  <script src="./vendor/xterm-addon-fit.js"></script>
+  <script src="./vendor/xterm-pty.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const setMsg = (text, pct) => {
+      $("msg").textContent = text;
+      $("pct").textContent = pct == null ? "" : pct + "%";
+      if (pct != null) $("fill").style.width = pct + "%";
+    };
+    const fail = (text) => {
+      $("status").classList.add("error");
+      setMsg(text, null);
+      $("hint").textContent = "Sayfayı yenileyip tekrar deneyin. Sorun sürerse güncel bir Safari, Chrome ya da Firefox kullanın.";
+    };
+
+    async function downloadImage() {
+      const manifest = await (await fetch("./image/manifest.json", { cache: "no-cache" })).json();
+      const parts = [];
+      let done = 0;
+      for (const name of manifest.files) {
+        const resp = await fetch("./image/" + name);
+        if (!resp.ok) throw new Error("indirme hatası: " + name);
+        const reader = resp.body.getReader();
+        for (;;) {
+          const { done: end, value } = await reader.read();
+          if (end) break;
+          parts.push(value);
+          done += value.length;
+          setMsg("Sistem indiriliyor…", Math.min(99, Math.floor(done * 100 / manifest.compressedSize)));
+        }
+      }
+      setMsg("Açılıyor…", 100);
+      const gz = new Blob(parts);
+      const raw = await new Response(gz.stream().pipeThrough(new DecompressionStream("gzip"))).blob();
+      return URL.createObjectURL(new Blob([raw], { type: "application/wasm" }));
+    }
+
+    function startTerminal(imageUrl) {
+      $("term-wrap").style.display = "block";
+      $("keys").style.display = "flex";
+      const xterm = new Terminal({
+        fontSize: window.innerWidth < 500 ? 12 : 14,
+        fontFamily: "ui-monospace, Menlo, Consolas, monospace",
+        theme: { background: "#000000" },
+        cursorBlink: true,
+      });
+      const fit = new FitAddon.FitAddon();
+      xterm.loadAddon(fit);
+      xterm.open($("terminal"));
+      fit.fit();
+      window.addEventListener("resize", () => fit.fit());
+
+      const { master, slave } = openpty();
+      const termios = slave.ioctl("TCGETS");
+      termios.iflag &= ~(ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+      termios.oflag &= ~(OPOST);
+      termios.lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+      slave.ioctl("TCSETS", new Termios(termios.iflag, termios.oflag, termios.cflag, termios.lflag, termios.cc));
+      xterm.loadAddon(master);
+
+      const worker = new Worker("./worker.js");
+      worker.postMessage({ type: "init", imagename: imageUrl });
+      new TtyServer(slave).start(worker);
+
+      const keys = { tab: "\t", ctrlc: "\x03", up: "\x1b[A", down: "\x1b[B", clear: "clear\r" };
+      document.querySelectorAll("#keys button").forEach((b) =>
+        b.addEventListener("click", () => { master.ldisc.writeFromLower(Array.from(new TextEncoder().encode(keys[b.dataset.k]))); xterm.focus(); }));
+
+      setMsg("Linux açılıyor, bu 1-2 dakika sürebilir…", null);
+      $("fill").style.width = "100%";
+      $("hint").textContent = "Komut satırı göründüğünde yazmaya başlayabilirsiniz. Telefonda klavyeyi açmak için siyah alana dokunun.";
+      xterm.onData(() => { $("status").style.display = "none"; fit.fit(); });
+    }
+
+    (async () => {
+      if (!window.crossOriginIsolated) {
+        setMsg("Sayfa hazırlanıyor…", null);
+        // coi-serviceworker reloads the page once it is active.
+        setTimeout(() => {
+          if (!window.crossOriginIsolated) fail("Tarayıcınız gerekli güvenlik ayarını (SharedArrayBuffer) açamadı.");
+        }, 8000);
+        return;
+      }
+      if (typeof DecompressionStream === "undefined") {
+        fail("Tarayıcınız çok eski (DecompressionStream desteği yok).");
+        return;
+      }
+      try {
+        startTerminal(await downloadImage());
+      } catch (e) {
+        console.error(e);
+        fail("Bir hata oluştu: " + e.message);
+      }
+    })();
+  </script>
+</body>
+</html>
