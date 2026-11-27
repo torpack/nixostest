@@ -7,6 +7,8 @@ let
   nix = s.nix;
   hello = s.hello;
   figlet = s.figlet;
+  # Not on PATH: installed on demand with nix-env, fully offline.
+  python = pkgs.python3Minimal;
 
   demo = pkgs.writeTextDir "root/demo.nix" ''
     # Bu dosya cevrimdisi derlenebilir: nix-build demo.nix && cat result
@@ -23,6 +25,7 @@ let
 
   etc = pkgs.runCommand "etc" { } ''
     mkdir -p $out/etc/nix $out/root $out/tmp $out/bin $out/usr/bin
+    echo ${python} > $out/etc/nix-python
     cat > $out/etc/passwd <<P
     root:x:0:0:root:/root:${bash}/bin/bash
     nobody:x:65534:65534:nobody:/var/empty:/bin/sh
@@ -55,12 +58,15 @@ let
       nix path-info --all
       hello
       figlet NixOS
+      python3                       (henuz kurulu degil)
+      nix-env -i $(cat /etc/nix-python)   (Python'u Nix ile kur)
+      python3 -c 'print(2 ** 100)'
 
     Not: Emulasyon yavas calisir, komutlarin cevap vermesi saniyeler surebilir.
 
     M
     cat > $out/root/.bashrc <<B
-    export PATH=/bin:/usr/bin:${nix}/bin:${busybox}/bin
+    export PATH=/root/.nix-profile/bin:/bin:/usr/bin:${nix}/bin:${busybox}/bin
     export PS1='[\u@nix-tarayici:\w]\$ '
     export NIX_PATH=
     cat /etc/motd
@@ -84,7 +90,7 @@ pkgs.dockerTools.buildLayeredImage {
       "HOME=/root"
       "USER=root"
       "TERM=xterm-256color"
-      "PATH=/bin:/usr/bin:${nix}/bin:${busybox}/bin"
+      "PATH=/root/.nix-profile/bin:/bin:/usr/bin:${nix}/bin:${busybox}/bin"
     ];
   };
 }

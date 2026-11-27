@@ -127,7 +127,7 @@
   <div id="status">
     <div class="label"><span id="msg">Hazırlanıyor…</span><span id="pct"></span></div>
     <div class="bar"><div id="fill"></div></div>
-    <div class="hint" id="hint">İlk açılışta yaklaşık 64 MB indirilir. Sistem açıldıktan sonra komutlar birkaç saniyede yanıt verir.</div>
+    <div class="hint" id="hint">İlk açılışta yaklaşık 80-90 MB indirilir. Sistem açıldıktan sonra komutlar birkaç saniyede yanıt verir.</div>
   </div>
 
   <div id="main">
@@ -175,6 +175,12 @@
       ["nix path-info -rsh $(readlink -f $(which hello))", "hello paketinin ve bağımlılıklarının boyutunu gösterir."],
       ["hello", "GNU hello programı: Nix ile kurulmuş basit bir paket."],
       ["figlet NixOS", "Yazıyı büyük harflerle çizer (figlet paketi)."],
+      ["python3 --version", "Python henüz kurulu değil, bu yüzden 'command not found' hatası verir."],
+      ["nix-env -i $(cat /etc/nix-python)", "Python'u Nix ile kurar. İnternet gerekmez, paket zaten /nix/store içinde hazır."],
+      ["python3 -c 'print(2 ** 100)'", "Kurulumdan sonra Python çalışır: 2 üzeri 100'ü hesaplar."],
+      ["python3 -c 'import sys; print(sys.version)'", "Kurulan Python'un sürümünü gösterir."],
+      ["nix-env -q", "Nix ile kullanıcı profiline kurulmuş paketleri listeler."],
+      ["nix-env -e python3-minimal", "Python'u kaldırır. Nix'te kurma ve kaldırma tek komuttur."],
       ["uname -a", "Tarayıcıda çalışan Linux çekirdeğinin bilgisini gösterir."],
     ];
     let sendToTerm = null;
