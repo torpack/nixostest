@@ -13,7 +13,7 @@ onmessage = (msg) => {
     var env = [];
     var fds = [];
     var netParam = getNetParam();
-    var listenfd = 3;
+    var listenfd = 1000; // no networking: keep socket fds out of the preopen range
     fetch(getImagename(), { credentials: 'same-origin' }).then((resp) => {
         resp['arrayBuffer']().then((wasm) => {
             if (netParam) {
@@ -40,12 +40,12 @@ onmessage = (msg) => {
                             "HTTP_PROXY=http://192.168.127.253:80"
                         ];
                         listenfd = 4;
-                        startWasi(wasm, ttyClient, args, env, fds, listenfd, 5);
+                        startWasi(wasm, ttyClient, args, env, fds, listenfd, 1001);
                     });
                     return;
                 }
             }
-            startWasi(wasm, ttyClient, args, env, fds, listenfd, 5);
+            startWasi(wasm, ttyClient, args, env, fds, listenfd, 1001);
         })
     });
 };
