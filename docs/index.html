@@ -200,7 +200,7 @@
       let lastErr;
       for (let attempt = 1; attempt <= 5; attempt++) {
         try {
-          const resp = await fetch("./image/" + name + "?v=2", { cache: "no-store" });
+          const resp = await fetch("./image/" + name + "?v=3", { cache: "no-store" });
           if (!resp.ok) throw new Error("HTTP " + resp.status);
           const buf = new Uint8Array(await resp.arrayBuffer());
           if (size && buf.length !== size) throw new Error("eksik dosya");
@@ -216,7 +216,7 @@
     }
 
     async function downloadImage() {
-      const manifest = await (await fetch("./image/manifest.json?v=2", { cache: "no-store" })).json();
+      const manifest = await (await fetch("./image/manifest.json?v=3", { cache: "no-store" })).json();
       const parts = [];
       let done = 0;
       for (let i = 0; i < manifest.files.length; i++) {
